@@ -7,7 +7,9 @@ from llama_index.graph_stores import SimpleGraphStore
 from src.graphindex.common.config import (
     SCHEMA_ORG_URI,
     SCHEMA_ORG_LOCAL_PATH_SUBGRAPHS,
-    SCHEMA_ORG_INDEX_LOCAL_PATH
+    SCHEMA_ORG_LOCAL_PATH,
+    SCHEMA_ORG_INDEX_LOCAL_PATH,
+    SCHEMA_FILE_NAME
 )
 
 from llama_index import (
@@ -39,9 +41,10 @@ class OntologyIndex:
     ) -> None:
         self.uri = SCHEMA_ORG_URI.format(ontology_version=ontology_version)
         self.index_type = index_type
+        self.schema_file_name = SCHEMA_FILE_NAME
 
         if use_schema_org:
-            self.schema_local_path = SCHEMA_ORG_LOCAL_PATH_SUBGRAPHS.format(
+            self.schema_local_path = SCHEMA_ORG_LOCAL_PATH.format(
                 src_dir=source_dir,
                 ontology_version=ontology_version
             )
@@ -50,9 +53,15 @@ class OntologyIndex:
                 ontology_version=ontology_version,
                 index_type=str.lower(self.index_type.name)
             )
+            self.subgraphs_path = SCHEMA_ORG_LOCAL_PATH_SUBGRAPHS.format(
+                src_dir=source_dir,
+                ontology_version=ontology_version
+            )
+
         else:
             self.schema_local_path = source_dir
             self.local_index = output_dir
+            self.subgraphs_path = f"{source_dir}/subgraphs"
 
         self.index = None
         self.ontology_version = ontology_version
@@ -63,6 +72,8 @@ class OntologyIndex:
 
         if os.path.isdir(local_path):
             return True
+
+        os.makedirs(local_path)
         return False
 
     def _load_local_index(self):
@@ -92,7 +103,7 @@ class OntologyIndex:
             subjects_with_props = extract_subgraph_for_each_subject(graph)
             save_subjects_to_files(
                 subjects_with_props,
-                SCHEMA_ORG_LOCAL_PATH_SUBGRAPHS.format(ontology_version=self.ontology_version)
+                self.subgraphs_path
             )
 
     def _transform_graph_to_vector_store(self):
@@ -102,7 +113,7 @@ class OntologyIndex:
             raise Exception("Could not read local index.")
 
         if not index:
-            schema_path = self.schema_local_path
+            schema_path = self.subgraphs_path
             index_path = self.local_index
 
             documents = SimpleDirectoryReader(schema_path).load_data()
