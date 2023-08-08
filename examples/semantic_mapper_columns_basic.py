@@ -1,3 +1,5 @@
+import json
+
 import pandas as pd
 
 from src.graphindex.common.enumerations import IndexType
@@ -25,4 +27,6 @@ if __name__ == '__main__':
         columns=data.head(10).to_dict(),
         check_answers_llm='gpt-4'
     )
-    print(res)
+
+    with open('data/mapping_result_fashion.json', 'w') as f:
+        f.write(json.dumps(res))
