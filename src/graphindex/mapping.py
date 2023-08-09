@@ -114,21 +114,24 @@ class SemanticMapper(BaseMapper):
 
         try:
             results = json.loads(results, strict=False)
+            for mapping in results['mappingResult']:
+                term_uri = mapping['targetTermUri']
+                if term_uri:
+                    response = requests.get(term_uri)
+                    logging.info(
+                        f"Request to generated uri: {term_uri} responded with status code: {response.status_code}")
+                    if response.status_code != 200:
+                        mapping['targetTermUri'] = None
+                        mapping['certainty'] = 'LOW'
+                        mapping['reasoning'] = None
         except json.decoder.JSONDecodeError as e:
-            raise Exception("Could not decode LLM generated results")
-
-        for mapping in results['mappingResult']:
-            term_uri = mapping['targetTermUri']
-            if term_uri:
-                response = requests.get(term_uri)
-                logging.info(f"Request to generated uri: {term_uri} responded with status code: {response.status_code}")
-                if response.status_code != 200:
-                    mapping['targetTermUri'] = None
-                    mapping['certainty'] = 'LOW'
-                    mapping['reasoning'] = None
+            raise Exception("Could not decode LLM generated results. Output structure doesn't conform to target.")
 
         if remap_llm:
-            return self._map_unidentified_answers(results, remap_llm)
+            try:
+                return self._map_unidentified_answers(results, remap_llm)
+            except Exception as err:
+                return results
         else:
             return results
 
@@ -143,6 +146,7 @@ class SemanticMapper(BaseMapper):
     def map(
             self,
             columns: Union[Dict[str, Dict[str, Any]]] = None,
+            description: str = None,
             project_id: str = None,
             schema_id: str = None,
             table_id: str = None,
@@ -156,7 +160,8 @@ class SemanticMapper(BaseMapper):
         else:
             mapping = self.get_similar_terms_from_ontology_version(
                 Prompt(SEMANTIC_MAPPING_PROMPT_COLUMNS),
-                columns
+                columns,
+                description
             )
             return self._postprocess_results(mapping.response, remap_llm=check_answers_llm)
 
@@ -164,6 +169,7 @@ class SemanticMapper(BaseMapper):
             self,
             query: Prompt,
             columns: Union[Dict[str, Dict[str, Any]], List[Dict[str, str]]],
+            description: str = None,
             openai_model: str = None,
     ):
 
@@ -197,4 +203,8 @@ class SemanticMapper(BaseMapper):
             ],
         )
 
-        return query_engine.query(json.dumps(columns))
+        user_input = json.dumps(columns)
+        if description:
+            user_input += f"\n###\n# Description:\n{description}"
+
+        return query_engine.query(user_input)
