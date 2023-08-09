@@ -15,7 +15,7 @@ logging.getLogger().addHandler(logging.FileHandler(filename=logfile))
 
 if __name__ == '__main__':
 
-    data = pd.read_csv('./data/fashion_products.csv')
+    data = pd.read_csv('C:/Users/mimi_/Desktop/Purchases.csv')
 
     mapper = SemanticMapper(
         ontology_source_dir='../schemas',
@@ -25,6 +25,7 @@ if __name__ == '__main__':
     )
     res = mapper.map(
         columns=data.head(10).to_dict(),
+        description="The table contains data about product purchases. It includes customer identifiers, shipping information, dates of shipment, documents related to the shipments and price information.",
         check_answers_llm='gpt-4'
     )
 

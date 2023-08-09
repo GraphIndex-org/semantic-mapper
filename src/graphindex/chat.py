@@ -9,15 +9,18 @@ class GraphIndexBot:
         self.system_prompt = CHAT_SYSTEM_PROMPT
         self.history = {}
 
-    def chat(self, project_id, question, table_data, mapping):
+    def chat(self, project_id, question, table_data, mapping, description=None):
         if project_id not in self.history:
             self.history[project_id] = [{"role": "system", "content": CHAT_SYSTEM_PROMPT}]
 
         history = self.history[project_id]
 
+        description = description if description is not None else "No description."
+
         prompt = CHAT_QUESTION_PROMPT.format(
             table_data=table_data,
             mapping=mapping,
+            description=description,
             question=question
         )
 

@@ -33,6 +33,7 @@ def map_column_names_to_ontology_terms():
     file = check_file_is_valid('file')
     project_id = request.form.get('project_id')
     check_project_id_is_valid(project_id)
+    description = request.form.get('description')
 
     logging.info(f"Started mapping for project with id: {project_id}")
 
@@ -53,6 +54,7 @@ def map_column_names_to_ontology_terms():
         )
         result = mapper.map(
             columns=data_summary,
+            description=description,
             check_answers_llm=VALIDATION_MODEL
         )
         result["project_id"] = project_id
@@ -69,6 +71,7 @@ def chat():
     check_project_id_is_valid(project_id)
     question = request.form.get("messageText")
     mapping = request.form.get("mapping")
+    description = request.form.get("description")
 
     if not question:
         return jsonify({"status": "error", "message": f"Invalid message sent by the user."}), 400
@@ -84,7 +87,8 @@ def chat():
             project_id,
             question,
             data_sample,
-            mapping
+            mapping,
+            description
         )
         return jsonify({"status": "success", "message": answer})
     except Exception as err:
