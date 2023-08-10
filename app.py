@@ -120,4 +120,4 @@ def check_file_is_valid(file_key):
 
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, host='0.0.0.0')
