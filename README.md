@@ -2,6 +2,13 @@
 
 GraphIndex is an open-source project that provides semantic mapping of table columns to ontology terms. It enables users to map table columns to terms in an ontology, with the default ontology being `schema.org`. The project uses a vector index generated with Llama Index, which is then utilized by LLM (Llama Mapping) to produce the mappings.
 
+## POC
+
+
+https://github.com/GraphIndex-org/semantic-mapper/assets/12727570/75d4297b-3549-4d9f-a270-578d1e3e78a3
+
+
+
 ## Installation and Setup
 
 1. Clone the repository:
