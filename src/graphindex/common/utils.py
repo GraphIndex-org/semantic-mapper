@@ -3,6 +3,7 @@ import os
 from typing import Dict
 
 import numpy as np
+import pandas as pd
 from rdflib import Graph, RDFS, Namespace, Literal
 
 
@@ -68,7 +69,7 @@ def save_subjects_to_files(subjects_with_predicates: Dict[str, Dict[str, str]], 
         os.makedirs(local_path)
 
     for subject, predicates in subjects_with_predicates.items():
-        subject_name = subject.replace('http://schema.org/', '').replace('https://schema.org/', '')
+        subject_name = subject.split("/")[-1]
         filename = f"{local_path}/{subject_name}.json"
         with open(filename, 'w') as f:
             f.write(json.dumps(predicates, indent=2))
@@ -116,7 +117,13 @@ def check_is_column_identifier(col, min_unique_values=0.99):
     return False
 
 
-def calculate_data_summary(dataset):
+def calculate_data_summary(dataset: pd.DataFrame):
+    """
+    Calculates a summary for all columns in a dataframe, including unique values, most frequent values,
+    number of missing values, statistics for numeric features
+    :param dataset: pd.DataFrame - a pandas dataframe
+    :return: dict - A dictionary with column names as keys and calculated statistics as values
+    """
     result = {}
     for col_name, col_data in dataset.items():
         num_null_values = col_data.isnull().sum()

@@ -15,7 +15,7 @@ logging.getLogger().addHandler(logging.FileHandler(filename=logfile))
 
 if __name__ == '__main__':
 
-    data = pd.read_csv('./data/fashion_products.csv')
+    data = pd.read_csv('C:/Users/mimi_/Desktop/Coupons.csv')
 
     mapper = SemanticMapper(
         ontology_source_dir='../schemas',
