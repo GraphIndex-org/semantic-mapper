@@ -1,3 +1,8 @@
+import json
+from typing import Dict
+
+import openai
+import pandas as pd
 import requests
 import os
 
@@ -18,9 +23,10 @@ from llama_index import (
     load_index_from_storage,
     SimpleDirectoryReader,
     KnowledgeGraphIndex,
-    ServiceContext
+    ServiceContext, OpenAIEmbedding
 )
 
+from src.graphindex.common.prompts import TABLES_MAPPING_PROMPT, TABLES_MAPPING_PROMPT_SYSTEM
 from src.graphindex.common.utils import (
     create_graph_from_jsonld,
     save_subjects_to_files,
@@ -149,3 +155,101 @@ class OntologyIndex:
 
     def get_index(self):
         return self.index
+
+
+def jaccard(list1, list2):
+    intersection = len(list(set(list1).intersection(list2)))
+    union = len(list((set(list1).union(set(list2)))))
+    return intersection / union if union else 0
+
+
+class ColumnIndex:
+    def __init__(self, tables: Dict[str, pd.DataFrame], index_path: str = "./index"):
+        self.tables = tables
+        self.index_path = index_path
+        self.embed_model = OpenAIEmbedding()
+        self.index = self._create_column_index(self.tables)
+
+    def _create_column_index(self, tables: Dict[str, pd.DataFrame]):
+        index = {}
+        similarity = {}
+
+        for table_name, table in tables.items():
+            for col_name, col_data in table.items():
+                data_list = sorted(col_data.dropna().astype(str).unique())
+
+                if not len(data_list):
+                    continue
+
+                embedding = data_list[:100]
+                similarity[f"{table_name}.{col_name}"] = embedding
+
+        for table_col, embedding in similarity.items():
+            for table_col2, embedding2 in similarity.items():
+                if table_col == table_col2 or (table_col.split(".")[0] == table_col2.split(".")[0]):
+                    continue
+                sim = jaccard(embedding, embedding2)
+                if sim > 0.6:
+                    if table_col not in index:
+                        index[table_col] = [(table_col2, sim)]
+                    else:
+                        index[table_col].append((table_col2, sim))
+
+        self._save_index(index, similarity)
+        return index
+
+    def _save_index(self, index, embeddings):
+        with open(f"{self.index_path}/index.json", "w") as f:
+            f.write(json.dumps(index))
+        with open(f"{self.index_path}/embeddings.json", "w") as f:
+            f.write(json.dumps(embeddings))
+
+    def retrieve_connected_tables(self, query, filter_similarity=0.7):
+        table_columns = [tc for tc in self.index.keys() if query == tc.split(".")[0]]
+        joins = []
+        for tc in table_columns:
+            for val in self.index[tc]:
+                if val[1] > filter_similarity:
+                    joins.append((tc, val[0]))
+
+        return joins
+
+
+if __name__ == '__main__':
+    tables = {
+        "characteristics": pd.read_csv('../../examples/data/spider/Characteristics.csv'),
+        "products_characteristics": pd.read_csv('../../examples/data/spider/Product_Characteristics.csv'),
+        "products": pd.read_csv('../../examples/data/spider/Products.csv'),
+        "ref_characteristic_types": pd.read_csv('../../examples/data/spider/Ref_Characteristic_Types.csv'),
+        "ref_colors": pd.read_csv('../../examples/data/spider/Ref_Colors.csv'),
+        "ref_product_categories": pd.read_csv('../../examples/data/spider/Ref_Product_Categories.csv'),
+    }
+
+    schemas = {
+        "catalog": pd.read_csv('../../examples/data/schemas/catalog.csv').to_dict(orient="records")
+    }
+
+    idx = ColumnIndex(tables, index_path="../../indices/column/custom")
+
+    joins = idx.retrieve_connected_tables("products", filter_similarity=0.7)
+    linked_tables = [j[1].split(".")[0] for j in joins]
+    linked_tables.append("products")
+    table_data = {k: v.head(10).to_dict() for k, v in tables.items() if k in linked_tables}
+
+    system_prompt = TABLES_MAPPING_PROMPT_SYSTEM
+
+    prompt = TABLES_MAPPING_PROMPT.format(
+        tables=json.dumps(table_data),
+        joins=json.dumps(joins),
+        target_schema=json.dumps(schemas)
+    )
+
+    response = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo-16k",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt}
+        ]
+    )
+
+    print(response)

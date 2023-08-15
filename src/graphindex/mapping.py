@@ -11,7 +11,7 @@ from llama_index.indices.vector_store import VectorIndexRetriever
 from llama_index.query_engine import RetrieverQueryEngine
 
 from src.graphindex.common.enumerations import IndexType
-from src.graphindex.ontology import OntologyIndex
+from src.graphindex.index import OntologyIndex
 from llama_index.llms import OpenAI
 from src.graphindex.common.prompts import (
     SEMANTIC_MAPPING_PROMPT_COLUMNS,

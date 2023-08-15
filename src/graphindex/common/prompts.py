@@ -386,3 +386,135 @@ Answer the following question using the examples in the system prompt.
 
 # Answer:
 """
+
+TABLES_MAPPING_PROMPT_SYSTEM = """
+You are an experienced database engineer. You are going to receive a sample of multiple database tables together
+with information on how to join the tables together. Your task is to map this set of tables into a provided target 
+schema. The information of the schema describes the columns and the possible values in each column. The name of
+the schema of the provided tables is 'dbo', and the name of the target schema is 'target'.
+
+*** The information about the joins might not be always accurate. Your task is to identify which of the suggested
+joining rules are correct and which are not. Do not output this informatin. ***
+
+Execute the task using the following steps:
+
+1. Map the columns from the provided tables to the columns of the target schema based on their meaning. For each
+column you will be provided with a few example values.
+ 
+*** You must map to all columns defined as mandatory. ***
+
+2. After you have mapped the input columns to the target schema columns, write a SQL query which will complete the
+mapping. Do not write any DDL, only output SQL queries for extracting and transforming data to the target schema.
+
+*** USE THE COLUMN NAMES DEFINED IN THE TARGET SCHEMA. DO NOT GENERATE NEW COLUMNS IN THE TARGET SCHEMA. ***
+*** USE THE COLUMNS DEFINED IN THE KEY 'column_name' FROM THE TARGET SCHEMA. ***
+*** CREATE INSERT STATEMENTS ON THE TARGET SCHEMA AND SELECT FROM THE PROVIDED TABLES. ***
+
+Use the following examples to gain a better understanding of your task:
+
+--> Beginning of examples:
+
+# Tables:
+
+'
+{{
+    "products": {{
+        "ProductId": {{0: 1, 1: 2, 2: 3, 3: 4, 4: 5}}, 
+        "ProductName": {{0: "T-Shirt", 1: "Shoes", 2: "Shorts", 3: "T-Shirt", 4: "Sweater"}},
+        "ProductDescription": {{0: "This is a T-Shirt", 1: "Any type of classy shoes", 2: "Sports shorts", 3: "Basic T-Shirt", 4: "Knit sweater"}},
+        "CategoryId": {{0: 6, 1: 2, 2: 3, 4: 6, 5: 6}},
+        "Price": {{0: 50, 1: 150, 2: 60, 3: 34, 4: 78}},
+    }},
+    "categories": {{
+        "CategoryId": {{0: 1, 1: 2, 2: 3, 3: 6, 4: 7}},
+        "CategoryName": {{0: "Accessories", 1: "Shoes", 2: "Sports", 3: "Clothes", 4: "Trainers"}},
+    }},
+    "sales": {{
+        "Date": {{0: "2023-01-01", 1: "2023-01-01", 2: "2023-01-01", 3: "2023-01-02", 4: "2023-01-02"}},
+        "ProductId": {{0: 1, 1: 2, 3: 2, 4: 5}},
+        "ClientId": {{0: 10023, 1: 4355, 2: 21144, 3: 53555, 4: 214}}
+    }}
+}}
+'
+
+###
+
+# Joins:
+'
+[
+    [products.ProductId, sales.ProductId],
+    [products.CategoryId, categories.CategoryId]
+]
+'
+
+### 
+
+# Target Schema:
+
+'
+{{
+    "catalog": [
+    {{
+        "column_name": "id",
+        "description": "SKU identifier of the product",
+        "example": 12355,
+        "required": "mandatory",
+        "type": "string",
+    }},
+    {{
+        "column_name": "product_name",
+        "description": "Name of the product",
+        "example": "LG LED 55'",
+        "required": "optional",
+        "type": "string",
+    }},
+    {{
+        "column_name": "product_description",
+        "description": "Free form text of the product description",
+        "example": "An LG LED TV 55'",
+        "required": "optional",
+        "type": "string",
+    }},  
+    ]
+}}
+'
+
+###
+
+# Answer:
+
+'
+INSERT INTO target.catalog ('id', 'product_name', 'product_description')
+SELECT p.ProductId, p.ProductName, p.ProductDescription
+FROM dbo.products as p; 
+'
+
+---> End of examples
+"""
+
+TABLES_MAPPING_PROMPT = """
+
+*** RETURN ONLY THE GENERATED SQL QUERIES AND NOTHING ELSE ***
+
+Using the previous example, generate the answer to the following input:
+
+# Tables:
+
+{tables}
+
+###
+
+# Joins:
+
+{joins}
+
+###
+
+# Target Schema:
+
+{target_schema}
+
+###
+
+# Answer:
+"""
