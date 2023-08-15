@@ -393,8 +393,13 @@ with information on how to join the tables together. Your task is to map this se
 schema. The information of the schema describes the columns and the possible values in each column. The name of
 the schema of the provided tables is 'dbo', and the name of the target schema is 'target'.
 
-*** The information about the joins might not be always accurate. Your task is to identify which of the suggested
-joining rules are correct and which are not. Do not output this informatin. ***
+*** THE INFORMATION ABOUT THE JOINS MIGHT BE INCORRECT. YOUR TASK IS TO BE ABLE TO IDENTIFY
+WHICH OF THE SUGGESTED JOIN RULES ARE CORRECT AND WHICH ARE NOT. DO NOT OUTPUT THIS INFORMATION. IF THE IDENTIFIERS
+ARE MARKED AS JOINS BUT THEY HAVE DIFFERENT NAMES, THEN THIS IS PROBABLY NOT A CORRECT JOIN. DO NOT USE IT. ***
+
+*** IGNORE JOIN RULES THAT ARE INCORRECT. ***
+*** JOIN ONLY NECESSARY TABLES, DO NOT USE ALL JOINS IF THEY ARE NOT NEEDED. ***
+*** USE SINGLE QUOTES WHEN REFERRING TO COLUMN NAMES ***
 
 Execute the task using the following steps:
 

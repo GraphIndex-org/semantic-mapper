@@ -249,7 +249,8 @@ if __name__ == '__main__':
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
-        ]
+        ],
+        temperature=1.0,
     )
 
     print(response)
