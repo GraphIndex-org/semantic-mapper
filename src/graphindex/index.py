@@ -1,4 +1,5 @@
 import json
+from abc import ABC
 from typing import Dict
 
 import openai
@@ -23,10 +24,11 @@ from llama_index import (
     load_index_from_storage,
     SimpleDirectoryReader,
     KnowledgeGraphIndex,
-    ServiceContext, OpenAIEmbedding
+    ServiceContext,
 )
 
-from src.graphindex.common.prompts import TABLES_MAPPING_PROMPT, TABLES_MAPPING_PROMPT_SYSTEM
+from src.graphindex.common.prompts import TABLES_MAPPING_PROMPT, TABLES_MAPPING_PROMPT_SYSTEM, \
+    TABLE_JOINS_PROMPT_SYSTEM, TABLE_JOINS_PROMPT
 from src.graphindex.common.utils import (
     create_graph_from_jsonld,
     save_subjects_to_files,
@@ -163,56 +165,62 @@ def jaccard(list1, list2):
     return intersection / union if union else 0
 
 
-class ColumnIndex:
-    def __init__(self, tables: Dict[str, pd.DataFrame], index_path: str = "./index"):
-        self.tables = tables
-        self.index_path = index_path
-        self.embed_model = OpenAIEmbedding()
-        self.index = self._create_column_index(self.tables)
+class ColumnIndex():
+    def __init__(
+            self,
+            tables: Dict[str, pd.DataFrame],
+            output_dir: str = "./index",
+            openai_model: str = "gpt-3.5-turbo-16k",
+    ):
+        self.tables = {k: v.head(10).to_dict() for k, v in tables.items()}
+        self.index_path = output_dir
+        self.openai_model = openai_model
+        self.index = self._load_or_create_index()
+        self._save_index(self.index)
+
+    def _load_or_create_index(self):
+        if not len(os.listdir(self.index_path)):
+            return self._create_column_index(self.tables)
+        else:
+            with open(f"{self.index_path}/index.json", "r") as f:
+                return json.load(f)
 
     def _create_column_index(self, tables: Dict[str, pd.DataFrame]):
-        index = {}
-        similarity = {}
+        system_prompt = TABLE_JOINS_PROMPT_SYSTEM
 
-        for table_name, table in tables.items():
-            for col_name, col_data in table.items():
-                data_list = sorted(col_data.dropna().astype(str).unique())
+        prompt = TABLE_JOINS_PROMPT.format(
+            tables=json.dumps(tables),
+        )
 
-                if not len(data_list):
-                    continue
+        response = openai.ChatCompletion.create(
+            model=self.openai_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=0,
+        )
 
-                embedding = data_list[:100]
-                similarity[f"{table_name}.{col_name}"] = embedding
-
-        for table_col, embedding in similarity.items():
-            for table_col2, embedding2 in similarity.items():
-                if table_col == table_col2 or (table_col.split(".")[0] == table_col2.split(".")[0]):
-                    continue
-                sim = jaccard(embedding, embedding2)
-                if sim > 0.6:
-                    if table_col not in index:
-                        index[table_col] = [(table_col2, sim)]
-                    else:
-                        index[table_col].append((table_col2, sim))
-
-        self._save_index(index, similarity)
+        print(response["choices"][0]["message"]["content"])
+        index = json.loads(response["choices"][0]["message"]["content"])
+        self._save_index(index)
         return index
 
-    def _save_index(self, index, embeddings):
+    def _save_index(self, index):
         with open(f"{self.index_path}/index.json", "w") as f:
             f.write(json.dumps(index))
-        with open(f"{self.index_path}/embeddings.json", "w") as f:
-            f.write(json.dumps(embeddings))
 
-    def retrieve_connected_tables(self, query, filter_similarity=0.7):
-        table_columns = [tc for tc in self.index.keys() if query == tc.split(".")[0]]
-        joins = []
-        for tc in table_columns:
-            for val in self.index[tc]:
-                if val[1] > filter_similarity:
-                    joins.append((tc, val[0]))
+    def get_primary_keys(self):
+        return self.index["primaryKeys"]
 
-        return joins
+    def get_foreign_keys(self):
+        return self.index["foreignKeys"]
+
+    def get_joins(self):
+        return self.index["joins"]
+
+    def get_index(self):
+        return self.index
 
 
 if __name__ == '__main__':
@@ -226,31 +234,26 @@ if __name__ == '__main__':
     }
 
     schemas = {
-        "catalog": pd.read_csv('../../examples/data/schemas/catalog.csv').to_dict(orient="records")
+        "catalog": pd.read_csv('../../examples/data/schemas/catalog.csv').to_dict(orient="records"),
+        "locations": pd.read_csv('../../examples/data/schemas/locations.csv').to_dict(orient="records"),
+        "transactions": pd.read_csv('../../examples/data/schemas/transactions.csv').to_dict(orient="records"),
+        "inventory_status": pd.read_csv('../../examples/data/schemas/inventory_status.csv').to_dict(orient="records")
     }
 
-    idx = ColumnIndex(tables, index_path="../../indices/column/custom")
-
-    joins = idx.retrieve_connected_tables("products", filter_similarity=0.7)
-    linked_tables = [j[1].split(".")[0] for j in joins]
-    linked_tables.append("products")
-    table_data = {k: v.head(10).to_dict() for k, v in tables.items() if k in linked_tables}
-
+    idx = ColumnIndex(tables, output_dir="../../indices/column/llm")
     system_prompt = TABLES_MAPPING_PROMPT_SYSTEM
-
     prompt = TABLES_MAPPING_PROMPT.format(
-        tables=json.dumps(table_data),
-        joins=json.dumps(joins),
+        tables=json.dumps({k: v.head(10).to_dict() for k, v in tables.items()}),
+        joins=json.dumps(idx.get_index()),
         target_schema=json.dumps(schemas)
     )
-
     response = openai.ChatCompletion.create(
         model="gpt-3.5-turbo-16k",
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": prompt}
         ],
-        temperature=1.0,
+        temperature=0.7,
     )
 
     print(response)
