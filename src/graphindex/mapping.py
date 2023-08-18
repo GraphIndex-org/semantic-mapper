@@ -3,7 +3,9 @@ import logging
 from abc import ABC
 from typing import List, Dict, Union, Any
 
+import pandas as pd
 import requests
+import openai
 from llama_index import ServiceContext, get_response_synthesizer, Prompt
 from llama_index.indices.knowledge_graph import KGTableRetriever
 from llama_index.indices.postprocessor import SimilarityPostprocessor
@@ -11,11 +13,18 @@ from llama_index.indices.vector_store import VectorIndexRetriever
 from llama_index.query_engine import RetrieverQueryEngine
 
 from src.graphindex.common.enumerations import IndexType
-from src.graphindex.index import OntologyIndex
+from src.graphindex.common.prompts.schema import SCHEMA_TO_SCHEMA_MAPPING_PROMPT_SYSTEM, SCHEMA_TO_SCHEMA_MAPPING_PROMPT
+from src.graphindex.index import OntologyIndex, ColumnIndex
 from llama_index.llms import OpenAI
-from src.graphindex.common.prompts import (
+from src.graphindex.common.prompts.ontology_mapping import (
     SEMANTIC_MAPPING_PROMPT_COLUMNS,
     SEMANTIC_MAPPING_REMAP_WRONG_RESULTS_COLUMNS
+)
+from src.graphindex.common.prompts.table import (
+    TABLES_MAPPING_PROMPT_SYSTEM,
+    TABLES_MAPPING_PROMPT,
+    TABLE_MAPPING_FEEDBACK_PROMPT_SYSTEM,
+    TABLE_MAPPING_FEEDBACK_PROMPT
 )
 
 
@@ -27,7 +36,7 @@ class BaseMapper(ABC):
 
     def map(
             self,
-            columns: List[str] = None,
+            tables: List[str] = None,
             project_id: str = None,
             schema_id: str = None,
             table_id: str = None,
@@ -36,13 +45,13 @@ class BaseMapper(ABC):
 
     @staticmethod
     def _check_map_arguments(
-            columns: Dict[str, Dict[str, Any]],
+            tables: Dict[str, Dict[str, Any]],
             project_id: str,
             schema_id: str,
             table_id: str,
     ):
 
-        if columns and (project_id or schema_id or table_id):
+        if tables and (project_id or schema_id or table_id):
             raise TypeError(
                 "Cannot provide project_id, schema_id or table_id if the argument columns is provided"
             )
@@ -52,7 +61,7 @@ class BaseMapper(ABC):
                 "If project_id is provided then schema_id and table_id must also be provided"
             )
 
-        elif not columns and not project_id:
+        elif not tables and not project_id:
             raise TypeError(
                 "Must provide one of columns or (project_id, schema_id, table_id)"
             )
@@ -145,14 +154,14 @@ class SemanticMapper(BaseMapper):
 
     def map(
             self,
-            columns: Union[Dict[str, Dict[str, Any]]] = None,
+            tables: Union[Dict[str, Dict[str, Any]]] = None,
             description: str = None,
             project_id: str = None,
             schema_id: str = None,
             table_id: str = None,
             check_answers_llm: str = None,
     ):
-        self._check_map_arguments(columns, project_id, schema_id, table_id)
+        self._check_map_arguments(tables, project_id, schema_id, table_id)
 
         if project_id:
             raise NotImplementedError()
@@ -160,7 +169,7 @@ class SemanticMapper(BaseMapper):
         else:
             mapping = self.get_similar_terms_from_ontology_version(
                 Prompt(SEMANTIC_MAPPING_PROMPT_COLUMNS),
-                columns,
+                tables,
                 description
             )
             return self._postprocess_results(mapping.response, remap_llm=check_answers_llm)
@@ -168,7 +177,7 @@ class SemanticMapper(BaseMapper):
     def get_similar_terms_from_ontology_version(
             self,
             query: Prompt,
-            columns: Union[Dict[str, Dict[str, Any]], List[Dict[str, str]]],
+            tables: Union[Dict[str, Dict[str, Any]], List[Dict[str, str]]],
             description: str = None,
             openai_model: str = None,
     ):
@@ -203,8 +212,118 @@ class SemanticMapper(BaseMapper):
             ],
         )
 
-        user_input = json.dumps(columns)
+        user_input = json.dumps(tables)
         if description:
             user_input += f"\n###\n# Description:\n{description}"
 
         return query_engine.query(user_input)
+
+
+class TablesMapper(BaseMapper):
+    def __init__(
+            self,
+            tables: Dict[str, pd.DataFrame],
+            project_id: str,
+            index_output_dir: str = './indices',
+            openai_model: str = 'gpt-3.5-turbo-16k',
+    ):
+        super().__init__(openai_model)
+        self.index_output_dir = index_output_dir
+        self.tables = tables
+        self.project_id = project_id
+        self.index = ColumnIndex(
+            self.tables,
+            output_dir=f"{self.index_output_dir}/{project_id}",
+            openai_model=self.openai_model
+        )
+
+    def _generate_answer_from_prompt_llm(self, system_prompt, prompt, model, temperature):
+        response = openai.ChatCompletion.create(
+            model=model if model else self.openai_model,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": prompt}
+            ],
+            temperature=temperature,
+        )
+        return response["choices"][0]["message"]["content"]
+
+    def _validation_feedback_llm(
+            self,
+            tables,
+            joins,
+            target_schema,
+            schema_mapping,
+            sql_queries,
+            model=None,
+            temperature=0.3
+    ):
+        system_prompt = TABLE_MAPPING_FEEDBACK_PROMPT_SYSTEM
+        prompt = TABLE_MAPPING_FEEDBACK_PROMPT.format(
+            tables=tables,
+            joins=joins,
+            target_schema=target_schema,
+            schema_mapping=schema_mapping,
+            queries=sql_queries
+        )
+
+        return self._generate_answer_from_prompt_llm(system_prompt, prompt, model, temperature)
+
+    def map(
+            self,
+            target_schemas: Dict[str, list[Dict]] = None,
+            project_id: str = None,
+            schema_id: str = None,
+            table_id: str = None,
+            validation_model: str = None,
+    ):
+        tables = json.dumps({k: v.head(10).to_dict() for k, v in self.tables.items()})
+        joins = json.dumps(self.index.get_index())
+        target_schema = json.dumps(target_schemas)
+
+        print(f"Tables:\n {tables}")
+        print("********************")
+        print(f"Joins:\n{joins}")
+        print("********************")
+        print(f"Target schema:\n{target_schema}")
+        print("********************")
+
+        schema_mapping_system_prompt = SCHEMA_TO_SCHEMA_MAPPING_PROMPT_SYSTEM
+        schema_mapping_prompt = SCHEMA_TO_SCHEMA_MAPPING_PROMPT.format(
+            tables=tables,
+            target_schema=target_schema
+        )
+
+        schema_mapping = self._generate_answer_from_prompt_llm(
+            schema_mapping_system_prompt,
+            schema_mapping_prompt,
+            None,
+            0
+        )
+
+        print(schema_mapping)
+
+        print("**************************")
+
+        system_prompt = TABLES_MAPPING_PROMPT_SYSTEM
+        prompt = TABLES_MAPPING_PROMPT.format(
+            tables=tables,
+            joins=joins,
+            target_schema=target_schema,
+            schema_mapping=schema_mapping,
+        )
+
+        sql_queries = self._generate_answer_from_prompt_llm(system_prompt, prompt, None, 0.7)
+
+        print(sql_queries)
+        print("**************************")
+
+        return self._validation_feedback_llm(
+            tables,
+            joins,
+            target_schema,
+            schema_mapping,
+            sql_queries,
+            validation_model,
+            0.3
+        )

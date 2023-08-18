@@ -1,6 +1,6 @@
 import openai
 
-from src.graphindex.common.prompts import CHAT_SYSTEM_PROMPT, CHAT_QUESTION_PROMPT
+from src.graphindex.common.prompts.chat import CHAT_SYSTEM_PROMPT, CHAT_QUESTION_PROMPT
 
 
 class GraphIndexBot:

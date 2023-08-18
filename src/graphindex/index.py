@@ -1,5 +1,4 @@
 import json
-from abc import ABC
 from typing import Dict
 
 import openai
@@ -27,8 +26,7 @@ from llama_index import (
     ServiceContext,
 )
 
-from src.graphindex.common.prompts import TABLES_MAPPING_PROMPT, TABLES_MAPPING_PROMPT_SYSTEM, \
-    TABLE_JOINS_PROMPT_SYSTEM, TABLE_JOINS_PROMPT
+from src.graphindex.common.prompts.joins import TABLE_JOINS_PROMPT_SYSTEM, TABLE_JOINS_PROMPT
 from src.graphindex.common.utils import (
     create_graph_from_jsonld,
     save_subjects_to_files,
@@ -165,7 +163,7 @@ def jaccard(list1, list2):
     return intersection / union if union else 0
 
 
-class ColumnIndex():
+class ColumnIndex:
     def __init__(
             self,
             tables: Dict[str, pd.DataFrame],
@@ -179,7 +177,8 @@ class ColumnIndex():
         self._save_index(self.index)
 
     def _load_or_create_index(self):
-        if not len(os.listdir(self.index_path)):
+        if (not os.path.isdir(self.index_path)) or (not len(os.listdir(self.index_path))):
+            os.makedirs(self.index_path)
             return self._create_column_index(self.tables)
         else:
             with open(f"{self.index_path}/index.json", "r") as f:
@@ -201,7 +200,6 @@ class ColumnIndex():
             temperature=0,
         )
 
-        print(response["choices"][0]["message"]["content"])
         index = json.loads(response["choices"][0]["message"]["content"])
         self._save_index(index)
         return index
@@ -221,39 +219,3 @@ class ColumnIndex():
 
     def get_index(self):
         return self.index
-
-
-if __name__ == '__main__':
-    tables = {
-        "characteristics": pd.read_csv('../../examples/data/spider/Characteristics.csv'),
-        "products_characteristics": pd.read_csv('../../examples/data/spider/Product_Characteristics.csv'),
-        "products": pd.read_csv('../../examples/data/spider/Products.csv'),
-        "ref_characteristic_types": pd.read_csv('../../examples/data/spider/Ref_Characteristic_Types.csv'),
-        "ref_colors": pd.read_csv('../../examples/data/spider/Ref_Colors.csv'),
-        "ref_product_categories": pd.read_csv('../../examples/data/spider/Ref_Product_Categories.csv'),
-    }
-
-    schemas = {
-        "catalog": pd.read_csv('../../examples/data/schemas/catalog.csv').to_dict(orient="records"),
-        "locations": pd.read_csv('../../examples/data/schemas/locations.csv').to_dict(orient="records"),
-        "transactions": pd.read_csv('../../examples/data/schemas/transactions.csv').to_dict(orient="records"),
-        "inventory_status": pd.read_csv('../../examples/data/schemas/inventory_status.csv').to_dict(orient="records")
-    }
-
-    idx = ColumnIndex(tables, output_dir="../../indices/column/llm")
-    system_prompt = TABLES_MAPPING_PROMPT_SYSTEM
-    prompt = TABLES_MAPPING_PROMPT.format(
-        tables=json.dumps({k: v.head(10).to_dict() for k, v in tables.items()}),
-        joins=json.dumps(idx.get_index()),
-        target_schema=json.dumps(schemas)
-    )
-    response = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo-16k",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
-        temperature=0.7,
-    )
-
-    print(response)
