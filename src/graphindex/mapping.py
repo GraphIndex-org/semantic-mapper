@@ -117,7 +117,7 @@ class SemanticMapper(BaseMapper):
         llm = OpenAI(temperature=self.temperature, top_p=self.top_p, model=openai_model)
         return ServiceContext.from_defaults(llm=llm)
 
-    def _postprocess_results(self, results, remap_llm: Union[str, None]):
+    def _postprocess_mappings(self, results, remap_llm: Union[str, None]):
 
         logging.info(results)
 
@@ -150,7 +150,7 @@ class SemanticMapper(BaseMapper):
             remap_answers,
             openai_model=llm
         )
-        return self._postprocess_results(mapping.response, remap_llm=None)
+        return self._postprocess_mappings(mapping.response, remap_llm=None)
 
     def map(
             self,
@@ -172,7 +172,7 @@ class SemanticMapper(BaseMapper):
                 tables,
                 description
             )
-            return self._postprocess_results(mapping.response, remap_llm=check_answers_llm)
+            return self._postprocess_mappings(mapping.response, remap_llm=check_answers_llm)
 
     def get_similar_terms_from_ontology_version(
             self,
@@ -269,6 +269,27 @@ class TablesMapper(BaseMapper):
 
         return self._generate_answer_from_prompt_llm(system_prompt, prompt, model, temperature)
 
+    def _postprocess_mappings(self, results: Dict[str, Dict]):
+        new_mapping = {
+            "mappingResult": {}
+        }
+
+        for target, mapping in results["mappingResult"].items():
+            original_cols = [single_col_mapping["original_column"] for single_col_mapping in mapping]
+            original_tables = [oc.split(".")[0] for oc in original_cols]
+
+            if not all([ot in self.tables for ot in original_tables]):
+                continue
+
+            processed_mappings = [
+                m for m in mapping
+                if m["original_column"].split(".")[1] in self.tables[m["original_column"].split(".")[0]].columns
+            ]
+
+            new_mapping["mappingResult"][target] = processed_mappings
+
+        return json.dumps(new_mapping)
+
     def map(
             self,
             target_schemas: Dict[str, list[Dict]] = None,
@@ -281,12 +302,9 @@ class TablesMapper(BaseMapper):
         joins = json.dumps(self.index.get_index())
         target_schema = json.dumps(target_schemas)
 
-        print(f"Tables:\n {tables}")
-        print("********************")
-        print(f"Joins:\n{joins}")
-        print("********************")
-        print(f"Target schema:\n{target_schema}")
-        print("********************")
+        logging.debug(f"Tables:\n {tables}")
+        logging.debug(f"Joins:\n{joins}")
+        logging.debug(f"Target schema:\n{target_schema}")
 
         schema_mapping_system_prompt = SCHEMA_TO_SCHEMA_MAPPING_PROMPT_SYSTEM
         schema_mapping_prompt = SCHEMA_TO_SCHEMA_MAPPING_PROMPT.format(
@@ -301,9 +319,10 @@ class TablesMapper(BaseMapper):
             0
         )
 
-        print(schema_mapping)
+        logging.debug(f"Schema mapping:\n{schema_mapping}")
 
-        print("**************************")
+        schema_mapping = self._postprocess_mappings(json.loads(schema_mapping))
+        logging.info(f"Schema mapping post-processed:\n{schema_mapping}")
 
         system_prompt = TABLES_MAPPING_PROMPT_SYSTEM
         prompt = TABLES_MAPPING_PROMPT.format(
@@ -315,15 +334,17 @@ class TablesMapper(BaseMapper):
 
         sql_queries = self._generate_answer_from_prompt_llm(system_prompt, prompt, None, 0.7)
 
-        print(sql_queries)
-        print("**************************")
+        logging.info(f"SQL queries: {sql_queries}")
 
-        return self._validation_feedback_llm(
-            tables,
-            joins,
-            target_schema,
-            schema_mapping,
-            sql_queries,
-            validation_model,
-            0.3
-        )
+        if validation_model:
+            return self._validation_feedback_llm(
+                tables,
+                joins,
+                target_schema,
+                schema_mapping,
+                sql_queries,
+                validation_model,
+                0
+            )
+        else:
+            return sql_queries

@@ -14,7 +14,9 @@ if __name__ == '__main__':
         "store": pd.read_csv(f"{data_path}/store.csv"),
         "district": pd.read_csv(f"{data_path}/district.csv"),
         "store_district": pd.read_csv(f"{data_path}/store_district.csv"),
-        "store_product": pd.read_csv(f"{data_path}/store_product.csv")
+        "store_product": pd.read_csv(f"{data_path}/store_product.csv"),
+        "sales_header": pd.read_csv(f"{data_path}/sales_header.csv"),
+        "sales_details": pd.read_csv(f"{data_path}/sales_details.csv"),
     }
 
     schemas = {
@@ -26,7 +28,7 @@ if __name__ == '__main__':
 
     mapper = TablesMapper(
         tables,
-        project_id="1234",
+        project_id="185",
         index_output_dir="../indices/column"
     )
 

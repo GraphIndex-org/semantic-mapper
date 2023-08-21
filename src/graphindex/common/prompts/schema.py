@@ -8,18 +8,17 @@ and columns from the target schema.
 *** THE GENERATED MAPPINGS MUST BE ONE-TO-ONE. YOU MUST MAP ONLY ONE ORIGINAL TABLE TO A SINGLE TARGET TABLE ***
 
 *** IF YOU HAVE DATA IN MULTIPLE ORIGINAL TABLES THAT CAN FIT INTO ONE TARGET TABLE, IDENTIFY THE MAIN TABLE IN THE 
-MAPPING AND PLACE THE OTHER TABLES AND CORRESPONDING COLUMNS INTO THE "columns_other_tables" SEGMENT OF THE RESULT. ***
+MAPPING AND PLACE THE OTHER TABLES AND CORRESPONDING COLUMNS INTO THE SEGMENT OF THE RESULT. ***
 
 *** THE MAPPINGS MUST ALWAYS BE FROM THE ORIGINAL TABLES TO THE TARGET SCHEMA, DO NOT MIX MAPPINGS WITHIN THE TARGET
 SCHEMA ***
 
-*** NOT ALL TABLES FROM THE TARGET SCHEMA WILL HAVE A MAPPING. DO NOT GENERATE COLUMNS AND TABLES THAT ARE NOT PROVIDED. ***
-
 *** DO NOT USE TABLES FROM THE TARGET SCHEMA AS IF THEY ARE ORIGINAL TABLES. ***
 
-*** ATTEMPT TO MAP AS MANY TABLES AS POSSIBLE, MAP BASED ON THE MEANING OF THE COLUMNS AND TABLES, NOT THE NAME, 
-BUT DO NOT GENERATE TABLES AND COLUMNS THAT DON'T EXIST. FOR EXAMPLE IN ONE SCHEMA A STORE TABLE MIGHT BE SYNONYMOUS 
-TO A LOCATION TABLE IN ANOTHER SCHEMA. ***
+*** ATTEMPT TO MAP AS MANY TABLES AS POSSIBLE, MAP BASED ON THE MEANING OF THE COLUMNS AND TABLES, NOT JUST THE NAME. ***
+
+*** ATTEMPT TO IDENTIFY SYNONYMOUS CONCEPTS SUCH AS 'sku_id' AND 'product_id', 'store' AND 'location', 
+'transactions' AND 'sales', AND SIMILAR. ***
 
 Perform the mapping using the following steps:
 1. First identify the names of the tables and corresponding columns from the original tables.
@@ -153,52 +152,41 @@ what a wrong output looks like:
 
 '
 {{
-    "mappingResult": [
+    "mappingResult": 
         {{
-            "original_table": "products",
-            "target_table": "catalog",
-            "columns": [
+            "catalog": [
                 {{
-                    "original_column": "ProductId",
+                    "original_column": "products.ProductId",
                     "target_column": "id"
                 }},
                 {{
-                    "original_column": "ProductName",
+                    "original_column": "products.ProductName",
                     "target_column": "product_name"
                 }},
                 {{
-                    "original_column": "ProductDescription",
+                    "original_column": "productsProductDescription",
                     "target_column": "product_description"
-                }}
-            ],
-            "columns_other_tables": [
+                }},
                 {{
                     "original_column": "categories.CategoryName",
                     "target_column": "catalog.category",
                 }}
-            ]
-        }},
-        {{
-            "original_table": "sales",
-            "target_table": "transactions",
-            "columns": [
+            ],
+            "transactions": [
                 {{
-                    "original_column": "Date",
+                    "original_column": "sales.Date",
                     "target_column": "date"
                 }},
                 {{
-                    "original_column": "ProductId",
+                    "original_column": "sales.ProductId",
                     "target_column": "product_id"
                 }},
-            ],
-            "columns_other_tables": [
                 {{
                     "original_column": "products.Price",
                     "target_column": "transactions.price"
                 }}
-            ]
-        }},
-    ]
+            ],
+        }}
 }}
 '
 ---> End of examples
@@ -215,9 +203,7 @@ MAPPINGS. DO NOT MAKE UP TABLES AND COLUMNS THAT ARE NOT PROVIDED AS INPUT. ***
 {{
     "mappingResult": [
         {{
-            "original_table": "products",
-            "target_table": "catalog",
-            "columns": [
+            "catalog": [
                 {{
                     "original_column": "ProductId",
                     "target_column": "id"
@@ -229,94 +215,13 @@ MAPPINGS. DO NOT MAKE UP TABLES AND COLUMNS THAT ARE NOT PROVIDED AS INPUT. ***
                 {{
                     "original_column": "ProductDescription",
                     "target_column": "product_description"
-                }}
-            ],
-            "columns_other_tables": [
+                }},
                 {{
                     "original_column": "categories.CategoryName",
                     "target_column": "catalog.category",
                 }}
-            ]
-        }},
-        {{
-            "original_table": "product_characteristics",
-            "target_table": "catalog",
-            "columns": [
-                {{
-                    "original_column": "ProductId",
-                    "target_column": "id"
-                }},
             ],
-            "columns_other_tables": [
-                {{
-                    "original_column": "characteristics.CharacteristicName",
-                    "target_column": "catalog.category",
-                }}
-            ]
-        }},
-        {{
-            "original_table": "sales",
-            "target_table": "transactions",
-            "columns": [
-                {{
-                    "original_column": "Date",
-                    "target_column": "date"
-                }},
-                {{
-                    "original_column": "ProductId",
-                    "target_column": "product_id"
-                }},
-            ],
-            "columns_other_tables": [
-                {{
-                    "original_column": "products.Price",
-                    "target_column": "transactions.price"
-                }}
-            ]
-        }},
-    ]
-}}
-'
-*** This is a bad output because it creates multiple mappings going into the target table "catalog". Only "products" should
-be mapped to "catalog", not "product_characteristics". ***
-
-*** YOU MUST GENERATE MAXIMUM ONE MAPPING FOR EACH TARGET TABLE. ***
- 
-###
-
-# Example bad output 2:
-
-'
-{{
-    "mappingResult": [
-        {{
-            "original_table": "products",
-            "target_table": "catalog",
-            "columns": [
-                {{
-                    "original_column": "ProductId",
-                    "target_column": "id"
-                }},
-                {{
-                    "original_column": "ProductName",
-                    "target_column": "product_name"
-                }},
-                {{
-                    "original_column": "ProductDescription",
-                    "target_column": "product_description"
-                }}
-            ],
-            "columns_other_tables": [
-                {{
-                    "original_column": "categories.CategoryName",
-                    "target_column": "catalog.category",
-                }}
-            ]
-        }},
-        {{
-            "original_table": "transactions",
-            "target_table": "transactions",
-            "columns": [
+            "transactions": [
                 {{
                     "original_column": "date",
                     "target_column": "date"
@@ -325,15 +230,12 @@ be mapped to "catalog", not "product_characteristics". ***
                     "original_column": "product_id",
                     "target_column": "product_id"
                 }},
-            ],
-            "columns_other_tables": [
                 {{
                     "original_column": "transactions.price",
                     "target_column": "transactions.price"
                 }}
             ]
-        }},
-    ]
+        }}
 }}
 '
 
@@ -348,12 +250,9 @@ Follow the given rules and generate outputs, the rules are:
 
 *** RETURN ONLY THE GENERATED MAPPING RESULT ***
 *** DO NOT MAKE UP ANY TABLES OR COLUMNS THAT WERE NOT PROVIDED IN THE #Original Tables SECTION OF THIS PROMPT. ***
-*** EACH MAPPING BETWEEN COLUMN TABLES SHOULD BE ONE-TO-ONE. IF YOU FIND MULTIPLE CANDIDATE COLUMNS THAT FIT, USE THE
-ONE THAT IS THE MOST SIMILAR TO THE TARGET AND PLACE THE OTHER TABLES IN THE "columns_other_tables" SECTION. ***
 *** DO NOT USE TABLES PROVIDED IN THE EXAMPLES FROM THE SYSTEM PROMPT, THEY DO NOT EXIST IN THE SYSTEM. ***
 *** THE MAPPINGS MUST ALWAYS BE FROM THE ORIGINAL TABLES TO THE TARGET SCHEMA, DO NOT MIX MAPPINGS WITHIN THE TARGET
 SCHEMA. ***
-*** NOT ALL TABLES FROM THE TARGET SCHEMA WILL HAVE A MAPPING. DO NOT GENERATED COLUMNS AND TABLES THAT ARE NOT PROVIDED ***
 *** PAY ATTENTION TO THE BAD EXAMPLES AND AVOID MAKING THE SAME MISTAKES. ***
 *** ATTEMPT TO MAP AS MANY TABLES AS POSSIBLE, BUT DO NOT GENERATE TABLES AND COLUMNS THAT DON'T EXIST. ***
 *** DO NOT USE TARGET TABLES AS THE SOURCE IN THE MAPPING, ONLY THE ORIGINAL TABLES. ***
