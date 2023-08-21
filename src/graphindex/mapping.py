@@ -337,7 +337,7 @@ class TablesMapper(BaseMapper):
         logging.info(f"SQL queries: {sql_queries}")
 
         if validation_model:
-            return self._validation_feedback_llm(
+            return schema_mapping, self._validation_feedback_llm(
                 tables,
                 joins,
                 target_schema,
@@ -347,4 +347,4 @@ class TablesMapper(BaseMapper):
                 0
             )
         else:
-            return sql_queries
+            return schema_mapping, sql_queries

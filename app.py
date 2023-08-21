@@ -5,11 +5,12 @@ import time
 
 from flask import Flask, request, jsonify
 import pandas as pd
+from werkzeug.utils import secure_filename
 
 from src.graphindex.chat import GraphIndexBot
 from src.graphindex.common.enumerations import IndexType
-from src.graphindex.mapping import SemanticMapper
-
+from src.graphindex.index import ColumnIndex
+from src.graphindex.mapping import SemanticMapper, TablesMapper
 
 src_dir = os.environ.get('SOURCE_DIR')
 out_dir = os.environ.get('OUTPUT_DIR')
@@ -26,6 +27,7 @@ logging.getLogger().addHandler(logging.FileHandler(filename=logfile))
 bot = GraphIndexBot()
 
 app = Flask(__name__)
+
 
 @app.route('/api/v1/mapping', methods=['POST'])
 def map_column_names_to_ontology_terms():
@@ -53,7 +55,7 @@ def map_column_names_to_ontology_terms():
             index_type=IndexType.VECTOR
         )
         result = mapper.map(
-            columns=data_summary,
+            tables=data_summary,
             description=description,
             check_answers_llm=VALIDATION_MODEL
         )
@@ -92,7 +94,77 @@ def chat():
         )
         return jsonify({"status": "success", "message": answer})
     except Exception as err:
-        return jsonify({"status": "error", "message": f"Internal server error: {err}"}), 500
+        return jsonify({"status": "error", "message": f"Error initiating chat: {err}"}), 500
+
+
+@app.route('/api/v1/keys-mapping', methods=['POST'])
+def map_keys():
+    project_id = request.form.get("project_id")
+    check_project_id_is_valid(project_id)
+    files = request.files.getlist('file')
+    dataframes_dict = read_tables_for_mapping(files)
+
+    try:
+        index = ColumnIndex(
+            dataframes_dict,
+            output_dir=f"{out_dir}/column/{project_id}",
+            openai_model=OPENAI_MODEL
+        )
+        return jsonify({"status": "success", "message": index.get_index()})
+    except Exception as err:
+        return jsonify({"status": "error", "message": f"Error creating index: {err}"}), 500
+
+
+@app.route('/api/v1/generate_queries', methods=['POST'])
+def generate_queries():
+
+    project_id = request.form.get("project_id")
+    check_project_id_is_valid(project_id)
+    files = request.files.getlist('file')
+    dataframes_dict = read_tables_for_mapping(files)
+    schemas = request.files.getlist('target_schemas')
+    schemas_dict = read_tables_for_mapping(schemas, are_schemas=True)
+
+    try:
+        mapper = TablesMapper(
+            dataframes_dict,
+            project_id=project_id,
+            index_output_dir=f"{out_dir}/column"
+        )
+
+        mapping, sql = mapper.map(target_schemas=schemas_dict)
+
+        mapping = json.loads(mapping)
+
+        mapping["queries"] = sql
+
+        return jsonify({"status": "success", "message": mapping})
+    except Exception as err:
+        return jsonify({"status": "error", "message": f"Error generating queries: {err}"}), 500
+
+
+def read_tables_for_mapping(uploaded_files, are_schemas=False):
+    if not len(uploaded_files):
+        return jsonify({"status": "error", "message": f"No files were provided for mapping."}), 404
+
+    dataframes_dict = {}
+
+    for file in uploaded_files:
+        if file and check_file_is_valid(file.filename):
+            filename = read_file_name(file)
+            df = try_read_csv(file)
+            if are_schemas:
+                df = df.to_dict(orient="records")
+
+            dataframes_dict[filename] = df
+
+    return dataframes_dict
+
+
+def read_file_name(file):
+    filename = secure_filename(file.filename)
+    filename = filename.replace(".csv", "")
+    return filename
 
 
 def try_read_csv(file):
@@ -115,7 +187,10 @@ def check_file_is_valid(file_key):
     file = request.files[file_key]
 
     if file.filename == '' or not file.filename.lower().endswith('.csv'):
-        return jsonify({"status": "error", "message": "Invalid file format. Only CSV files are allowed."}), 400
+        return jsonify({
+            "status": "error",
+            "message": f"Invalid file format for {file.filename}. Only CSV files are allowed."
+        }), 400
     return file
 
 
