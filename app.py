@@ -2,21 +2,21 @@ import json
 import logging
 import os
 import time
-
+import dotenv
 from flask import Flask, request, jsonify
 import pandas as pd
 
 from src.graphindex.chat import GraphIndexBot
 from src.graphindex.common.enumerations import IndexType
 from src.graphindex.mapping import SemanticMapper
+dotenv.load_dotenv()
 
+src_dir = os.getenv('SOURCE_DIR')
+out_dir = os.getenv('OUTPUT_DIR')
+logs_dir = os.getenv('LOGS_DIR')
 
-src_dir = os.environ.get('SOURCE_DIR')
-out_dir = os.environ.get('OUTPUT_DIR')
-logs_dir = os.environ.get('LOGS_DIR')
-
-OPENAI_MODEL = os.environ.get('OPENAI_MODEL')
-VALIDATION_MODEL = os.environ.get('VALIDATION_MODEL')
+OPENAI_MODEL = os.getenv('OPENAI_MODEL')
+VALIDATION_MODEL = os.getenv('VALIDATION_MODEL')
 
 logfile = f'{logs_dir}/{time.time()}.txt'
 
